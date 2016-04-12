@@ -1,191 +1,237 @@
 require_relative 'grid'
 
-class Node
-  attr_reader :name, :coord, :connections
-  attr_writer :visited
-  attr_accessor :destination_direction, :destination_distance
 
-  def initialize(name, coord = [0,0])
-    @name = name
-    @connections = {}
-    @visited = false
-    @coord = coord
-    @destination_direction = nil
+#TODO: sort out the use of the terms coord, coordinates, location, point, and how those terms relate to the terms
+#      box and grid and node.  maybe some convention like, if the variable is a Point3D the word point appears in the name
+#      and if it is a Node3D the word node appears in the name.  boxes have grid locations (which are Hashes), and
+#      pixel locations (which are Hashes).
+#
+#      grid_point, pixel_point, node_point, grid_location_hash, pixel_location_hash, node_location_hash
+#
+
+module NodesOnSquareGrids
+
+  attr_accessor :destination_distance, :destination_directions, :visited, :cost_to_enter
+
+  def initialize(cost: 1)
     @destination_distance = 0
-  end
-
-  def destination_coord
-    x = coord[0]
-    y = coord[1]
-    if destination_direction != nil
-      adjust_x = destination_direction[0]
-      adjust_y = destination_direction[1]
-    else
-      adjust_x = 0
-      adjust_y = 0
-    end
-    [x - adjust_x, y - adjust_y]
-  end
-
-  def add_edge(connection, weight: 1)
-    @connections[connection] = weight
-  end
-
-  def remove_edge(connection)
-    @connections.delete(connection)
-  end
-
-  def goes_to?(connection)
-    @connections.include?(connection)
+    @destination_directions = []
+    @visited = false
+    @cost_to_enter = cost
   end
 
   def visited?
     @visited
   end
 
-  def unvisited_connections
-    @connections.select{ |k,v| k.visited? == false }
+end
+
+
+class Node3D
+  include NodesOnSquareGrids
+
+  attr_accessor :grid_point, :grid_coordinates, :edges, :flagged
+
+  def initialize(coord: Point3D.new, edges: {}, cost: 1)
+    @grid_point = coord
+    @grid_coordinates = @grid_point.location
+    @edges = edges #a hash consisting of node keys and edge weight values
+    @flagged = false
+    super(cost: cost) #this calls the initialize method in NodesOnSquareGrids
   end
 
-  def to_s
-    "#{@name} -> [#{@connections.keys.map(&:name).join(' ')}]"
+  # the word 'define' is used in the method name nstead of 'add', because it
+  # can be used to both create an edge or re-define an edge weight.
+  def define_edge(node, weight = node.cost_to_enter)
+    @edges[node] = weight
   end
 
-  def name_to_a
-    @name.gsub(/\[|\]/,'').split(',').map(&:to_i)
+  def remove_edge(node)
+    @edges.delete(node)
+  end
+
+  def edge_weight(node)
+    @edges[node]
+  end
+
+  def goes_to?(node)
+    @edges.include?(node)
+  end
+
+  def flag
+    @flagged = true
+  end
+
+  def unflag
+    @flagged = false
+  end
+
+  def flagged?
+    @flagged
+  end
+
+  def flagged_connections
+    @edges.select{ |k,v| k.flagged? == true }
+  end
+
+  def unflagged_connections
+    @edges.select{ |k,v| k.flagged? == false }
+  end
+
+end
+
+module GraphsOnSquareGrids
+  # what if I initialize the GridOfSquares in this module, and have the DirectedGraph class
+  # call super. that way I can get rid of the SquareGridGraph class
+
+  def get_outgoing_node(node, sidename)
+    loc = node.grid_point
+    new_point = loc.send(:"#{sidename}", 1)
+    outgoing_node = @nodes[new_point.location]
+  end
+
+  def get_adjacent_nodes(node)
+    { top: get_outgoing_node(node, :up), bottom: get_outgoing_node(node, :down), left: get_outgoing_node(node, :left), right: get_outgoing_node(node, :right) }
+  end
+
+  def add_outgoing_edge(node, sidename)
+    outgoing_node = get_outgoing_node(node,sidename)
+    if not outgoing_node == nil
+      define_edge(from: node, to: outgoing_node, weight: outgoing_node.cost_to_enter)
+    end
+  end
+
+  def add_outgoing_edges(node)
+    sides = [:up, :down, :left, :right]
+    sides.each do |sidename|
+      add_outgoing_edge(node, sidename)
+    end
+  end
+
+  def add_incoming_edges(node)
+    adjacent_nodes = get_adjacent_nodes(node)
+    adjacent_nodes.each do |k,v|
+      if (not v == nil) && (not v.goes_to?(node))
+        define_edge(from: v, to: node, weight: node.cost_to_enter)
+      end
+    end
   end
 
 end
 
 class DirectedGraph
-  attr_accessor :nodes, :deleted_nodes
+  include GraphsOnSquareGrids
+
+  attr_accessor :nodes, :wall_nodes
 
   def initialize
-    @nodes = {}
-    @deleted_nodes = []
+    @nodes = {}         # a hash of node coordinate keys and node values
+    @wall_nodes = []    # an array of nodes that are not traversible
   end
 
-  def has_node?(node)
-    @nodes.values.include?(node)
-  end
-
-  def has_node_named?(node_name)
-    @nodes.keys.include?(node_name)
+  def [](node_coord)
+    @nodes[node_coord]
   end
 
   def add_node(node)
-    @nodes[node.name] = node
+    @nodes[node.grid_point.location] = node
   end
 
   def add_nodes(nodes)
-    nodes.each do |node| add_node(node) end
+    nodes.each do |node|
+      add_node(node)
+    end
   end
 
   def remove_node(node)
-    @nodes.delete(node.name)
+    @nodes.delete(node.grid_point)
+    node.edges = {}
     @nodes.each do |other_node_name, other_node|
       if other_node.goes_to?(node) then other_node.remove_edge(node) end
     end
   end
 
-  def add_edge(from_node_name, to_node_name, weight: 1)
-    if @nodes[from_node_name] != nil && @nodes[to_node_name] != nil
-      @nodes[from_node_name].add_edge(@nodes[to_node_name], weight: weight)
+  # the word 'define' is used in the method name instead of 'add', because it
+  # can be used to both create an edge or re-define an edge weight.
+  def define_edge(from: Point.new.location, to: Point.new.location, weight: @nodes[to].cost_to_enter)
+    if @nodes[from.grid_coordinates] != nil && @nodes[to.grid_coordinates] != nil
+      from.define_edge(to, weight)
     end
   end
 
-  def remove_edge(from_node_name, to_node_name)
-    @nodes[from_node_name].remove_edge(@nodes[to_node_name])
+  def remove_edge(from_node, to_node)
+    from_node.remove_edge(to_node)
   end
 
-  def [](name)
-    @nodes[name]
+
+  # the next three methods are used to determine if the graph contains any cyclces
+  def unflagged_nodes
+    @nodes.select{ |k,v| v.flagged? == false }
   end
 
-  def unvisited_nodes
-    @nodes.select{ |k,v| v.visited? == false }
+  def unflagged_leaves
+    @nodes.select{ |k,v| v.flagged? == false && v.unflagged_connections.size == 0 }
   end
 
-  def visited_nodes
-    @nodes.select{ |k,v| v.visited? == true }
-  end
-
-  def reset_nodes
-    @nodes.each { |k,v| v.visited = false }
+  def unflag_all_nodes
+    @nodes.each { |k,v| v.flagged = false }
   end
 
   def is_cyclic?
-    if unvisited_nodes.size == 0 then reset_nodes ; return false end
-    leaves = @nodes.select{ |k,v| v.unvisited_connections.size == 0 && v.visited? == false}
-    if leaves.size == 0 then reset_nodes ; return true end
-    leaf = @nodes[leaves.keys.first]
-    @nodes[leaf.name].visited = true
+    # flagging a node as visited is analogous to deleting it, from the perspective of this method
+    # if there are no nodes, then there are no cycles
+    # if there are no leaves, then there is at least one cycle
+    # if unvisited nodes remain, but all leaves have been visited, then there must be a cycle
+    # conversely, if the last leaf visited is also the last node visited, then no cycles were found
+    if unflagged_nodes.size  == 0 then unflag_all_nodes ; return false end
+    if unflagged_leaves.size == 0 then unflag_all_nodes ; return true end
+    puts unflagged_leaves.size
+    next_leaf = unflagged_leaves.values.first
+    next_leaf.flag
     is_cyclic?
   end
+end
 
-  def add_outgoing_edges(node)
-    add_node(node) unless has_node?(node) == true
+module SingleSourceAndSink
+  attr_accessor :sink_node, :source_node
 
-    loc   = node.coord
-    above = [loc[0], loc[1] - 1]
-    below = [loc[0], loc[1] + 1]
-    left  = [loc[0] - 1, loc[1]]
-    right = [loc[0] + 1, loc[1]]
-
-    add_edge(node.name,above.to_s)
-    add_edge(node.name,below.to_s)
-    add_edge(node.name,left.to_s)
-    add_edge(node.name,right.to_s)
-  end
-
-  def add_incoming_edges(node)
-    add_node(node) unless has_node?(node) == true
-
-    loc   = node.coord
-    above = [loc[0], loc[1] - 1]
-    below = [loc[0], loc[1] + 1]
-    left  = [loc[0] - 1, loc[1]]
-    right = [loc[0] + 1, loc[1]]
-    adjacent = [above, below, left, right]
-
-    @nodes.each do |other_node_name, other_node|
-      if not other_node.goes_to?(node) && adjacent.include?(other_node) then add_edge(other_node_name, node.name) end
+  def initialize
+    @sink_node = @graph[{x: rand(1..(@col_count).to_i), y: rand(1..(@row_count).to_i), z: 0}]
+    @source_node = @sink_node
+    while @source_node == @sink_node do
+      @source_node = @graph[{x: rand(1..(@col_count).to_i), y: rand(1..(@row_count).to_i), z: 0}]
     end
   end
 
 end
 
-def build_grid_and_graph(ww, wh, bw, bh, start_row, start_col, end_row, end_col)
-  grid = SquareGrid.new(ww,wh,bw,bh)
-  rows = grid.row_count
-  cols = grid.column_count
+class SquareGridGraph
+  include SingleSourceAndSink
 
+  attr_reader :row_count, :col_count
+  attr_accessor :grid, :graph, :nodes
 
-
-  nodes = []
-
-  (0..cols).to_a.each do |i|
-    (0..rows).to_a.each do |j|
-      nodes << Node.new([i,j].to_s,[i,j])
+  def initialize(rows: 20, cols: 30, pixels_per_side: 30)
+    # the thing about a GridOfSquares object is that it can return pixel coordinates for one of nine points on any
+    # grid box referenced by its row and column number. this is useful for drawing functions
+    @grid = GridOfSquares.new(width: cols * pixels_per_side, height: rows * pixels_per_side, box_side: pixels_per_side)
+    @row_count = rows
+    @col_count = cols
+    # create a node for each box in the grid...
+    @nodes = []
+    (1..@col_count).to_a.each do |i|
+      (1..@row_count).to_a.each do |j|
+        @nodes << Node3D.new(coord: Point3D.new(x: i, y: j))
+      end
     end
-  end
-
-  graph = DirectedGraph.new
-  graph.add_nodes(nodes)
-
-  nodes.each do |node|
-    graph.add_outgoing_edges(node)
-  end
-
-  nodes.each do |node|
-    if (node.coord[0] < start_row) || (node.coord[0] > end_row)
-      graph.remove_node(node)
-      graph.deleted_nodes << [node.coord[0], node.coord[1]]
-    elsif (node.coord[1] < start_col) || (node.coord[1] > end_col)
-      graph.remove_node(node)
-      graph.deleted_nodes << [node.coord[0], node.coord[1]]
+    # then add those nodes to a graph where each node has bidirectional edges
+    # to the top, bottom, left, and right sides...
+    @graph = DirectedGraph.new
+    @graph.add_nodes(@nodes)
+    @nodes.each do |node|
+      @graph.add_outgoing_edges(node)
     end
+    super()
   end
 
-  {grid: grid, graph: graph}
 end
