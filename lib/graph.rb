@@ -14,7 +14,7 @@ module NodesOnSquareGrids
   attr_accessor :destination_distance, :destination_directions, :visited, :cost_to_enter
 
   def initialize(cost: 1)
-    @destination_distance = 0
+    @destination_distance = Float::INFINITY
     @destination_directions = []
     @visited = false
     @cost_to_enter = cost
