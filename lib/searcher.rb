@@ -10,29 +10,32 @@ class GraphSearcher
     @current_node.destination_distance = 0
     @adjacent_nodes  = {}
     @fringe          = []
-    @jump_count      = 1
+    @jump_count      = 0
     @paths           = []
     @temp_paths      = []
     search_node(@current_node)
   end
 
   def search_node(node)
+    # -remember the default distance from 'a' to the sink is infinite
+    # -if possible_distance = a.destination_distance then there  + a.cost_to_enter
     @current_node         = node
     @adjacent_nodes       = @graph.adjacent_nodes_from(@current_node.location)
-    @adjacent_nodes.each do |v|
-      @fringe << v unless (@fringe.include?(v) || (v.visited?))
-      possible_distance = @current_node.destination_distance + v.cost_to_enter
-      if possible_distance <= v.destination_distance
-        v.destination_distance = possible_distance
-        # if possible_distance = v.destination_distance then there are two or more paths of equal length from the grid square
-        # if all edge weights are 1, then there are at most two equal length paths out of any given grid square
-        v.destination_directions = [] if (possible_distance < v.destination_distance)
-        possible_direction = {x: node.point[:x] - v.point[:x], y: node.point[:y] - v.point[:y]}
+    @adjacent_nodes.each do |a|
+      @fringe << a unless (@fringe.include?(a) || (a.visited?))
+      possible_distance = @current_node.destination_distance + a.cost_to_enter
+      if possible_distance <= a.destination_distance
+        a.destination_distance = possible_distance
+        if (possible_distance < a.destination_distance)
+          a.destination_directions = []
+          search_node(a)
+        end
+        possible_direction = {x: node.point[:x] - a.point[:x], y: node.point[:y] - a.point[:y]}
         case possible_direction
-          when {x:  1, y:  0} then v.destination_directions << :right unless v.destination_directions.include?(:right)
-          when {x: -1, y:  0} then v.destination_directions << :left  unless v.destination_directions.include?(:left)
-          when {x:  0, y:  1} then v.destination_directions << :down  unless v.destination_directions.include?(:down)
-          when {x:  0, y: -1} then v.destination_directions << :up    unless v.destination_directions.include?(:up)
+          when {x:  1, y:  0} then a.destination_directions << :right unless a.destination_directions.include?(:right)
+          when {x: -1, y:  0} then a.destination_directions << :left  unless a.destination_directions.include?(:left)
+          when {x:  0, y:  1} then a.destination_directions << :down  unless a.destination_directions.include?(:down)
+          when {x:  0, y: -1} then a.destination_directions << :up   unless a.destination_directions.include?(:up)
         end
       end
     end
@@ -47,8 +50,7 @@ class GraphSearcher
     end
   end
 
-  def redo_search
-    temp_jump_count = @jump_count
+  def reset_search
     @current_node = @graph.sink_node
     @fringe = []
     @paths = []
@@ -60,17 +62,15 @@ class GraphSearcher
     end
     @current_node.destination_distance = 0
     search_node(@current_node)
+  end
+
+  def redo_search
+    temp_jump_count = @jump_count
+    reset_search
     temp_jump_count.times { step_forward }
   end
 
-  def reset_search
-    @current_node = @graph.sink_node
-    @fringe = []
-    @paths = []
-    @jump_count = 0
-    @graph.all_nodes.each { |node| node.unvisit }
-    search_node(@current_node)
-  end
+  # these next two methods are used in the find_shortest_paths_from(source) method
 
   def get_min_distance_in_fringe
     @fringe.reduce(Float::INFINITY) do |memo,node|
@@ -105,21 +105,33 @@ class GraphSearcher
 
     while min_fringe_dist < source.destination_distance do
       step_forward
-      @jump_count += 1
       min_fringe_dist = get_min_distance_in_fringe
     end
 
-    step_count = 1
     @paths = [[source]]
     while do_all_paths_end_at_sink? == false do
       @paths.each do |path|
         path.last.destination_directions.each do |dir|
-          @temp_paths << (path.dup << @graph[path.last.grid_point.send(dir,1).location])
+          new_loc = @graph[path.last.point.send(dir,1).location]
+          if new_loc != nil
+            @temp_paths << (path.dup << new_loc)
+          end
         end
       end
       @paths = @temp_paths
       @temp_paths = []
-      step_count += 1
     end
+    puts @paths
     @paths
   end
+
+  def get_nodes_within(dist)
+    nodes_within = []
+    @graph.all_nodes.each do |node|
+      if node.destination_distance <= dist
+        nodes_within << node
+      end
+    end
+  end
+
+end

@@ -118,7 +118,7 @@ class GridOfSquares
 	end
 
   # make_quad wraps Gosu's draw_quad, reducing the number of arguments and
-  # hiding the gradient-fill functionality
+  # hiding the gradient-fill functionality;
   # tl, tr, bl, and br are expected to be GridPoint3D objects
   def make_quad(tl, tr, bl, br, fill_color = BLUE, opacity = 255, z = 0)
     fill_color.alpha = opacity
@@ -162,6 +162,58 @@ class GridOfSquares
     horiz_adjust = (@box_side_length - font.text_width("#{txt}")) / 2
     vert_adjust = (@box_side_length - font.height) / 2
     font.draw("#{txt}", pt.right(horiz_adjust)[:x], pt.down(vert_adjust)[:y], 0, 1, 1, BLACK)
+  end
+
+  def draw_arrow(x, y, color = RED, z = 0, stem: 15, thickness: 4, head: 15, flare: 10)
+    Gosu.draw_quad(x, y, color, x + stem, y, color, x, y + thickness, color, x + stem, y + thickness, color, z)
+    Gosu.draw_triangle(x + stem, y - flare / 2, color, x + stem + head, y + thickness / 2, color, x + stem, y + thickness + flare / 2, color, z)
+  end
+
+  def direction_arrow(loc, color = RED, z = 0, side: :left, facing: :out, stem: 15, thickness: 4, head: 15, flare: 10)
+    x_to_center = (stem + head) / 2
+    y_to_center = thickness / 2
+    case side
+    when :left
+      facing == :out ? rot = 180 : rot = 0
+      pt = pixel_top_left(loc[:x], loc[:y])
+      arrow_x = pt[:x] - x_to_center
+      arrow_y = pt[:y] + @box_side_length / 2
+      Gosu.scale(@box_side_length / 50.0, @box_side_length / 50.0, arrow_x + x_to_center, arrow_y + y_to_center) do
+        Gosu.rotate(rot, arrow_x + x_to_center, arrow_y + y_to_center) do
+          draw_arrow(arrow_x, arrow_y, color, z, stem: stem, thickness: thickness, head: head, flare: flare)
+        end
+      end
+    when :right
+      facing == :out ? rot = 0 : rot = 180
+      pt = pixel_top_right(loc[:x], loc[:y])
+      arrow_x = pt[:x] - x_to_center
+      arrow_y = pt[:y] + @box_side_length / 2
+      Gosu.scale(@box_side_length / 50.0, @box_side_length / 50.0, arrow_x + x_to_center, arrow_y + y_to_center) do
+        Gosu.rotate(rot, arrow_x + x_to_center, arrow_y + y_to_center) do
+          draw_arrow(arrow_x, arrow_y, color, z, stem: stem, thickness: thickness, head: head, flare: flare)
+        end
+      end
+    when :up
+      facing == :out ? rot = 270 : rot = 90
+      pt = pixel_top_left(loc[:x], loc[:y])
+      arrow_x = pt[:x] + @box_side_length / 2 - x_to_center
+      arrow_y = pt[:y] - 2
+      Gosu.scale(@box_side_length / 50.0, @box_side_length / 50.0, arrow_x + x_to_center, arrow_y + y_to_center) do
+        Gosu.rotate(rot, arrow_x + x_to_center, arrow_y + y_to_center) do
+          draw_arrow(arrow_x, arrow_y, color, z, stem: stem, thickness: thickness, head: head, flare: flare)
+        end
+      end
+    when :down
+      facing == :out ? rot = 90 : rot = 270
+      pt = pixel_bottom_left(loc[:x], loc[:y])
+      arrow_x = pt[:x] + @box_side_length / 2 - x_to_center
+      arrow_y = pt[:y] - 2
+      Gosu.scale(@box_side_length / 50.0, @box_side_length / 50.0, arrow_x + x_to_center, arrow_y + y_to_center) do
+        Gosu.rotate(rot, arrow_x + x_to_center, arrow_y + y_to_center) do
+          draw_arrow(arrow_x, arrow_y, color, z, stem: stem, thickness: thickness, head: head, flare: flare)
+        end
+      end
+    end
   end
 
 end
