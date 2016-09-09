@@ -25,11 +25,12 @@ class GraphSearcher
       @fringe << a unless (@fringe.include?(a) || (a.visited?))
       possible_distance = @current_node.destination_distance + a.cost_to_enter
       if possible_distance <= a.destination_distance
-        a.destination_distance = possible_distance
         if (possible_distance < a.destination_distance)
           a.destination_directions = []
-          search_node(a)
+          adj_adj = @graph.adjacent_nodes_from(a.location)
+          adj_adj.each {|b| b.unvisit}
         end
+        a.destination_distance = possible_distance
         possible_direction = {x: node.point[:x] - a.point[:x], y: node.point[:y] - a.point[:y]}
         case possible_direction
           when {x:  1, y:  0} then a.destination_directions << :right unless a.destination_directions.include?(:right)
@@ -47,6 +48,10 @@ class GraphSearcher
     if next_node != nil
       search_node(next_node)
       @jump_count += 1
+    else
+      puts "bam!"
+      unvisited = @graph.all_nodes.select { |n| n.visited == false }
+      search_node(unvisited.last) unless unvisited == []
     end
   end
 
