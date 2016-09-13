@@ -1,16 +1,12 @@
-#TODO: right click should cycle between edge weights 2,3,4,5
-#TODO: nodes with edge weight of 2 should be light forest, 3 dark forest, 4 light water, 5 dark water
-#TODO: save and load (and reset) last graph
-#TODO: arrow keys should move around the current node
-#TODO: make the 's' key set the source to the current node
-#TODO: limit the number of paths highlighted to some reasonable number, and choose them randomly
 #TODO: spawn squares at the source and have them move randomly towards the sink (and let there be multiple sources)
 #TODO: create a slider UI element to move the simulation forward and backwards
-#TODO: randomly assign edge weights to nodes
+#TODO: prevent the damn thing from crashing
+#TODO: why do some equal length paths not get identified?
 
 #TODO: HEXES!
 
 require 'gosu'
+require 'pry'
 require_relative 'searcher'
 
 class Pathfinding < Gosu::Window
@@ -20,21 +16,32 @@ class Pathfinding < Gosu::Window
     self.caption = "Pathfinding Tribute"
 
     @grid = GridOfSquares.new(width: width, height: height, box_side: box_side)
-    @graph = PathfindingGraph.new
 
-    coordinates = @grid.generate_coordinates
-
-    coordinates.each do |coord|
-      @graph.add_node_at(coord)
+    begin
+      File.open('graph') do |f|
+        @graph = Marshal.load(f)
+      end
+    rescue
+      @graph = nil
     end
 
-    coordinates.each do |coord|
-      @graph.connect_node_at(coord)
-    end
+    if @graph == nil
+      @graph = PathfindingGraph.new
 
-    x_rand = @grid.random_x_coordinate
-    y_rand = @grid.random_y_coordinate
-    @graph.sink_node = @graph[{x: x_rand, y: y_rand, z: 0}]
+      coordinates = @grid.generate_coordinates
+
+      coordinates.each do |coord|
+        @graph.add_node_at(coord)
+      end
+
+      coordinates.each do |coord|
+        @graph.connect_node_at(coord)
+      end
+
+      x_rand = @grid.random_x_coordinate
+      y_rand = @grid.random_y_coordinate
+      @graph.sink_node = @graph[{x: x_rand, y: y_rand, z: 0}]
+    end
 
     @searcher = GraphSearcher.new(graph: @graph)
 
@@ -59,13 +66,10 @@ class Pathfinding < Gosu::Window
     mouseover_cell = @grid.mouseover_cell({x: mouse_x, y: mouse_y})
 
     @graph.all_nodes.each do |node|
-      if node.visited?
-        @grid.fill_cell(node.location, VISITED_NODE_COLOR)
-      else
-        @grid.fill_cell(node.location, UNVISITED_NODE_COLOR)
-      end
 
       case node.cost_to_enter
+      when 1
+        @grid.fill_cell(node.location, VISITED_NODE_COLOR)
       when 2
         @grid.fill_cell(node.location, LIGHT_GREEN)
       when 3
@@ -75,6 +79,13 @@ class Pathfinding < Gosu::Window
       when 5
         @grid.fill_cell(node.location, DARK_BLUE)
       end
+
+      if node.visited?
+        #@grid.fill_cell(node.location, VISITED_NODE_COLOR)
+      else
+        @grid.fill_cell(node.location, UNVISITED_NODE_COLOR)
+      end
+
     end
 
     @graph.all_removed_nodes.each do |node|
@@ -97,7 +108,7 @@ class Pathfinding < Gosu::Window
       @grid.draw_text(loc, dist, @arial) unless dist == Float::INFINITY || @show_distances == false
 
       if node.destination_distance <= @nodes_within
-        @grid.fill_cell(node.location, YELLOW, 100)
+        @grid.fill_cell(node.location, YELLOW)
       end
 
       if node.destination_directions != []
@@ -111,11 +122,11 @@ class Pathfinding < Gosu::Window
 
     @searcher.paths.each do |path|
       path.each do |node|
-        @grid.fill_cell(node.location, YELLOW, 5)
+        @grid.fill_cell(node.location, YELLOW)
       end
     end
 
-    @grid.fill_cell(mouseover_cell)
+    @grid.fill_cell(mouseover_cell, WHITE,200)
 
   end
 
@@ -125,10 +136,24 @@ class Pathfinding < Gosu::Window
       @show_arrows == true ? @show_arrows = false : @show_arrows = true
     when Gosu::KbD
       @show_distances == true ? @show_distances = false : @show_distances = true
+    when Gosu::KbG
+      @graph.all_nodes.each { |n| n.cost_to_enter = rand(1..5)}
     when Gosu::KbP
       @run_sim == true ? @run_sim = false : @run_sim = true
+    when Gosu::KbQ
+      File.open('graph', 'w+') do |f|
+        Marshal.dump(@graph, f)
+      end
+      self.close
     when Gosu::KbR
       @searcher.reset_search
+    when Gosu::KbS
+      coord = @grid.mouseover_cell(x: mouse_x, y: mouse_y)
+      @searcher.find_shortest_paths_from(@graph[coord])
+    when Gosu::KbZ
+      coord = @grid.mouseover_cell(x: mouse_x, y: mouse_y)
+      puts "#{@graph[coord].location}"
+      binding.pry
     when Gosu::KbSpace
       @searcher.step_forward
     when Gosu::Kb1
@@ -151,6 +176,22 @@ class Pathfinding < Gosu::Window
       @nodes_within = 9
     when Gosu::Kb0
       @nodes_within = 0
+    when Gosu::KbUp
+      sink_point = @graph.sink_node.point
+      @graph.sink_node = @graph[sink_point.up(1).location]
+      @searcher.reset_search
+    when Gosu::KbDown
+      sink_point = @graph.sink_node.point
+      @graph.sink_node = @graph[sink_point.down(1).location]
+      @searcher.reset_search
+    when Gosu::KbLeft
+      sink_point = @graph.sink_node.point
+      @graph.sink_node = @graph[sink_point.left(1).location]
+      @searcher.reset_search
+    when Gosu::KbRight
+      sink_point = @graph.sink_node.point
+      @graph.sink_node = @graph[sink_point.right(1).location]
+      @searcher.reset_search
     when Gosu::MsLeft
       coord = @grid.mouseover_cell({x: mouse_x, y: mouse_y})
       if @graph.is_a_wall_at?(coord)

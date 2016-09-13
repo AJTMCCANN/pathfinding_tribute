@@ -27,8 +27,8 @@ class GraphSearcher
       if possible_distance <= a.destination_distance
         if (possible_distance < a.destination_distance)
           a.destination_directions = []
-          adj_adj = @graph.adjacent_nodes_from(a.location)
-          adj_adj.each {|b| b.unvisit}
+          #a.unvisit
+          @fringe << a unless @fringe.include?(a)
         end
         a.destination_distance = possible_distance
         possible_direction = {x: node.point[:x] - a.point[:x], y: node.point[:y] - a.point[:y]}
@@ -50,8 +50,8 @@ class GraphSearcher
       @jump_count += 1
     else
       puts "bam!"
-      unvisited = @graph.all_nodes.select { |n| n.visited == false }
-      search_node(unvisited.last) unless unvisited == []
+   #   unvisited = @graph.all_nodes.select { |n| n.visited == false }
+   #   search_node(unvisited.last) unless unvisited == []
     end
   end
 
@@ -116,9 +116,11 @@ class GraphSearcher
     @paths = [[source]]
     while do_all_paths_end_at_sink? == false do
       @paths.each do |path|
-        path.last.destination_directions.each do |dir|
-          new_loc = @graph[path.last.point.send(dir,1).location]
-          if new_loc != nil
+        if path.last.destination_directions == []
+          @temp_paths << path
+        else
+          path.last.destination_directions.each do |dir|
+            new_loc = @graph[path.last.point.send(dir,1).location]
             @temp_paths << (path.dup << new_loc)
           end
         end
@@ -126,7 +128,6 @@ class GraphSearcher
       @paths = @temp_paths
       @temp_paths = []
     end
-    puts @paths
     @paths
   end
 

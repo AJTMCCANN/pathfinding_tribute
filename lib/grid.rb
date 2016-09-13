@@ -1,6 +1,5 @@
 require_relative 'colors'
 
-
 class GridPoint3D
 
 	attr_accessor :location
